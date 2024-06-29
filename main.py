@@ -1,9 +1,9 @@
 import customtkinter as ctk
 import sqlite3
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 import re
 import hashlib
-
+import json
 
 # Инициализация базы данных
 def initialize_db():
@@ -36,9 +36,7 @@ def initialize_db():
     conn.commit()
     conn.close()
 
-
 initialize_db()
-
 
 class SecurityApp(ctk.CTk):
     def __init__(self):
@@ -132,6 +130,16 @@ class SecurityApp(ctk.CTk):
         email = self.reg_email_entry.get()
         hashed_password = self.hash_password(password)
 
+        # Проверка на пустые поля
+        if not username or not password or not name or not email:
+            messagebox.showerror("Ошибка", "Все поля обязательны для заполнения")
+            return
+
+        # Проверка на корректность имени
+        if not name.isalpha():
+            messagebox.showerror("Ошибка", "Имя должно содержать только буквы")
+            return
+
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             self.log_action(f"Ошибка регистрации: некорректный email - {email}")
             messagebox.showerror("Ошибка", "Некорректный email")
@@ -180,6 +188,9 @@ class SecurityApp(ctk.CTk):
         self.load_logs_button = ctk.CTkButton(self.logs_tab, text="Загрузить логи", command=self.load_logs)
         self.load_logs_button.pack(pady=10)
 
+        self.export_logs_button = ctk.CTkButton(self.logs_tab, text="Импорт логов", command=self.export_logs)
+        self.export_logs_button.pack(pady=10)
+
     def load_logs(self):
         for item in self.log_tree.get_children():
             self.log_tree.delete(item)
@@ -190,6 +201,22 @@ class SecurityApp(ctk.CTk):
         conn.close()
         for log in logs:
             self.log_tree.insert('', 'end', values=log)
+
+    def export_logs(self):
+        conn = sqlite3.connect('security_app.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT date, message FROM logs ORDER BY date DESC")
+        logs = cursor.fetchall()
+        conn.close()
+
+        log_data = [{"date": log[0], "message": log[1]} for log in logs]
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".json",
+                                                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+        if file_path:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, ensure_ascii=False, indent=4)
+            messagebox.showinfo("Успешно", "Логи экспортированы в JSON файл")
 
     def create_user_management_tab(self):
         self.user_tree = ttk.Treeview(self.user_management_tab, columns=("ID", "Username", "Name", "Email"),
@@ -222,37 +249,43 @@ class SecurityApp(ctk.CTk):
             self.user_tree.insert('', 'end', values=user)
 
     def show_add_user_window(self):
-        if hasattr(self, 'add_user_window') and self.add_user_window.winfo_exists():
-            return
-
         self.add_user_window = ctk.CTkToplevel(self)
         self.add_user_window.title("Добавить пользователя")
-        self.add_user_window.geometry("600x450")
-        self.add_user_window.grab_set()
 
-        self.add_username_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Имя пользователя")
-        self.add_username_entry.pack(pady=10)
+        self.new_username_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Имя пользователя")
+        self.new_username_entry.pack(pady=10)
 
-        self.add_password_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Пароль", show="*")
-        self.add_password_entry.pack(pady=10)
+        self.new_password_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Пароль", show="*")
+        self.new_password_entry.pack(pady=10)
 
-        self.add_name_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Имя")
-        self.add_name_entry.pack(pady=10)
+        self.new_name_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Имя")
+        self.new_name_entry.pack(pady=10)
 
-        self.add_email_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Email")
-        self.add_email_entry.pack(pady=10)
+        self.new_email_entry = ctk.CTkEntry(self.add_user_window, placeholder_text="Email")
+        self.new_email_entry.pack(pady=10)
 
-        self.save_user_button = ctk.CTkButton(self.add_user_window, text="Сохранить", command=self.add_user)
-        self.save_user_button.pack(pady=10)
+        self.add_user_confirm_button = ctk.CTkButton(self.add_user_window, text="Добавить",
+                                                     command=self.add_user)
+        self.add_user_confirm_button.pack(pady=10)
 
     def add_user(self):
-        username = self.add_username_entry.get()
-        password = self.add_password_entry.get()
-        name = self.add_name_entry.get()
-        email = self.add_email_entry.get()
+        username = self.new_username_entry.get()
+        password = self.new_password_entry.get()
+        name = self.new_name_entry.get()
+        email = self.new_email_entry.get()
         hashed_password = self.hash_password(password)
 
+        # Проверка на пустые поля
+        if not username or not password or not name or not email:
+            messagebox.showerror("Ошибка", "Все поля обязательны для заполнения")
+            return
+
+        if not name.isalpha():
+            messagebox.showerror("Ошибка", "Имя должно содержать только буквы")
+            return
+
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            self.log_action(f"Ошибка добавления пользователя: некорректный email - {email}")
             messagebox.showerror("Ошибка", "Некорректный email")
             return
 
@@ -263,10 +296,11 @@ class SecurityApp(ctk.CTk):
                            (username, hashed_password, name, email))
             conn.commit()
             self.log_action(f"Добавлен новый пользователь: {username}")
-            self.load_users()
-            messagebox.showinfo("Успешно", "Пользователь добавлен")
+            messagebox.showinfo("Успешно", "Пользователь добавлен успешно")
             self.add_user_window.destroy()
+            self.load_users()
         except sqlite3.IntegrityError:
+            self.log_action(f"Ошибка добавления пользователя: имя пользователя уже существует - {username}")
             messagebox.showerror("Ошибка", "Имя пользователя уже существует")
         finally:
             conn.close()
@@ -276,38 +310,26 @@ class SecurityApp(ctk.CTk):
         if not selected_item:
             messagebox.showerror("Ошибка", "Выберите пользователя для удаления")
             return
-
-        user_id = self.user_tree.item(selected_item)["values"][0]
-
-        # Проверяем, не пытаемся ли удалить текущего пользователя
-        if user_id == self.current_user:
-            messagebox.showerror("Ошибка", "Вы не можете удалить пользователя, под которым зашли в программу")
-            return
-
+        user_id = self.user_tree.item(selected_item[0], "values")[0]
         conn = sqlite3.connect('security_app.db')
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE id=?", (user_id,))
         conn.commit()
         conn.close()
-        self.log_action(f"Удалён пользователь ID: {user_id}")
+        self.log_action(f"Пользователь удален: ID {user_id}")
         self.load_users()
-        messagebox.showinfo("Успешно", "Пользователь удалён")
 
     def create_reports_tab(self):
-        self.report_tree = ttk.Treeview(self.reports_tab, columns=("ID", "Category", "Date"), show='headings')
+        self.report_tree = ttk.Treeview(self.reports_tab, columns=("ID", "Category", "Description", "Date"),
+                                        show='headings')
         self.report_tree.heading("ID", text="ID")
         self.report_tree.heading("Category", text="Категория")
+        self.report_tree.heading("Description", text="Описание")
         self.report_tree.heading("Date", text="Дата")
         self.report_tree.pack(pady=10, fill='both', expand=True)
 
-        self.add_report_button = ctk.CTkButton(self.reports_tab, text="Добавить отчёт", command=self.show_add_report_window)
+        self.add_report_button = ctk.CTkButton(self.reports_tab, text="Создать отчет", command=self.show_add_report_window)
         self.add_report_button.pack(pady=10)
-
-        self.remove_report_button = ctk.CTkButton(self.reports_tab, text="Удалить отчёт", command=self.remove_report)
-        self.remove_report_button.pack(pady=10)
-
-        self.view_report_button = ctk.CTkButton(self.reports_tab, text="Просмотреть отчёт", command=self.view_report)
-        self.view_report_button.pack(pady=10)
 
         self.load_reports()
 
@@ -316,82 +338,47 @@ class SecurityApp(ctk.CTk):
             self.report_tree.delete(item)
         conn = sqlite3.connect('security_app.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT id, category, date FROM reports")
+        cursor.execute("SELECT id, category, description, date FROM reports")
         reports = cursor.fetchall()
         conn.close()
         for report in reports:
             self.report_tree.insert('', 'end', values=report)
 
     def show_add_report_window(self):
-        if hasattr(self, 'add_report_window') and self.add_report_window.winfo_exists():
-            return
+        if self.report_windows_opened == 0:
+            self.add_report_window = ctk.CTkToplevel(self)
+            self.add_report_window.title("Создать отчет")
 
-        self.add_report_window = ctk.CTkToplevel(self)
-        self.add_report_window.title("Добавить отчёт")
-        self.add_report_window.geometry("400x300")
-        self.add_report_window.grab_set()
+            self.report_category_entry = ctk.CTkEntry(self.add_report_window, placeholder_text="Категория")
+            self.report_category_entry.pack(pady=10)
 
-        self.add_category_entry = ctk.CTkEntry(self.add_report_window, placeholder_text="Категория")
-        self.add_category_entry.pack(pady=10)
+            self.report_description_entry = ctk.CTkEntry(self.add_report_window, placeholder_text="Описание")
+            self.report_description_entry.pack(pady=10)
 
-        self.add_description_text = ctk.CTkTextbox(self.add_report_window, width=300, height=150)
-        self.add_description_text.pack(pady=10)
+            self.add_report_confirm_button = ctk.CTkButton(self.add_report_window, text="Создать",
+                                                           command=self.add_report)
+            self.add_report_confirm_button.pack(pady=10)
 
-        self.save_report_button = ctk.CTkButton(self.add_report_window, text="Сохранить", command=self.add_report)
-        self.save_report_button.pack(pady=10)
+            self.report_windows_opened = 1
 
     def add_report(self):
-        category = self.add_category_entry.get()
-        description = self.add_description_text.get("1.0", ctk.END).strip()
+        category = self.report_category_entry.get()
+        description = self.report_description_entry.get()
+
+        # Проверка на пустые поля
+        if not category or not description:
+            messagebox.showerror("Ошибка", "Все поля обязательны для заполнения")
+            return
 
         conn = sqlite3.connect('security_app.db')
         cursor = conn.cursor()
         cursor.execute("INSERT INTO reports (category, description) VALUES (?, ?)", (category, description))
         conn.commit()
         conn.close()
-        self.log_action(f"Добавлен новый отчёт: {category}")
-        self.load_reports()
-        messagebox.showinfo("Успешно", "Отчёт добавлен")
+        self.log_action(f"Создан новый отчет: {category}")
         self.add_report_window.destroy()
-
-    def remove_report(self):
-        selected_item = self.report_tree.selection()
-        if not selected_item:
-            messagebox.showerror("Ошибка", "Выберите отчёт для удаления")
-            return
-        report_id = self.report_tree.item(selected_item)["values"][0]
-        conn = sqlite3.connect('security_app.db')
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM reports WHERE id=?", (report_id,))
-        conn.commit()
-        conn.close()
-        self.log_action(f"Удалён отчёт ID: {report_id}")
+        self.report_windows_opened = 0
         self.load_reports()
-        messagebox.showinfo("Успешно", "Отчёт удалён")
-
-    def view_report(self):
-        selected_item = self.report_tree.selection()
-        if not selected_item:
-            messagebox.showerror("Ошибка", "Выберите отчёт для просмотра")
-            return
-        report_id = self.report_tree.item(selected_item)["values"][0]
-        conn = sqlite3.connect('security_app.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reports WHERE id=?", (report_id,))
-        report = cursor.fetchone()
-        conn.close()
-
-        if report:
-            self.view_report_window = ctk.CTkToplevel(self)
-            self.view_report_window.title("Просмотр отчёта")
-            self.view_report_window.geometry("400x400")
-
-            report_text = f"ID: {report[0]}\nКатегория: {report[1]}\nДата: {report[3]}\n\nОписание:\n{report[2]}"
-            self.view_report_text = ctk.CTkTextbox(self.view_report_window, width=350, height=300)
-            self.view_report_text.pack(pady=10)
-            self.view_report_text.insert(ctk.END, report_text)
-            self.view_report_text.configure(state='disabled')
-
 
 if __name__ == "__main__":
     app = SecurityApp()
